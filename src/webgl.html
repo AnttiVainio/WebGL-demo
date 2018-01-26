@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html style="overflow-y:scroll">
+<head>
+
+<title>WebGL Demo</title>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+<script src="matrix.js"></script>
+<script src="shader.js"></script>
+<script src="framebuffer.js"></script>
+<script src="scene.js"></script>
+
+<script>
+"use strict";
+
+$(function(){
+	const canvas = $("#glCanvas");
+	const _gl = canvas[0].getContext("webgl");
+	const gl = _gl ? _gl : canvas[0].getContext("experimental-webgl");
+
+	if (!gl) {
+		alert("Unable to initialize WebGL. Your browser or machine may not support it.");
+		return;
+	}
+
+	// Create the framebuffer
+	const framebuffer = new Framebuffer(gl, canvas);
+
+	// Create shaders
+	const framebufferShader = new Shader(gl, _2DVertexShader, _2DFragmentShader);
+	framebufferShader.addAttribute("a_position", 4);
+	framebufferShader.addAttribute("a_texture", 2);
+	framebufferShader.addUniform("texture1", "int");
+
+	const shader = new Shader(gl, _3DVertexShader, _3DFragmentShader);
+	shader.addAttribute("a_position", 4);
+	shader.addUniform("perspective", "mat4");
+	shader.addUniform("camera", "mat4");
+	shader.addUniform("transform", "mat4");
+	shader.addUniform("color", "vec4");
+
+	const structure = new Structure(gl, framebuffer, shader, 8);
+	const fullscreen = new FullscreenBox(gl, framebuffer, framebufferShader);
+
+	gl.clearColor(0.0, 0.0, 0.0, 1.0);
+
+	let perspectiveMat;
+
+	const keyboard = new Set();
+	const speed = 0.2;
+	const rotSpeed = 0.05;
+	let rot = 0;
+	let cx = 0, cy = 0, cz = 0, rx = 0, ry = 0;
+
+	let canvasWidth;
+	let startTime = performance.now();
+
+	function draw(timestamp) {
+		const tmp = $("#canvasDiv").width();
+		if (canvasWidth !== tmp) {
+			canvasWidth = tmp;
+			canvas[0].width = $("#canvasDiv").width();
+			canvas[0].height = $("#canvasDiv").width() / 16.0 * 9.0;
+			framebuffer.update();
+			perspectiveMat = perspective(1.4, canvas.width() / canvas.height(), 0.1, 1000.0);
+		}
+
+		let delta = (timestamp - startTime) / 16;
+		if (!delta) delta = 1.0;
+		startTime = timestamp;
+
+		rot += 0.01 * delta;
+
+		// Move the camera around
+		if (keyboard.has(87)) {
+			cz -= Math.cos(rx) * Math.cos(ry) * speed * delta;
+			cx += Math.sin(rx) * Math.cos(ry) * speed * delta;
+			cy += Math.sin(ry) * speed * delta;
+		}
+		if (keyboard.has(83)) {
+			cz += Math.cos(rx) * Math.cos(ry) * speed * delta;
+			cx -= Math.sin(rx) * Math.cos(ry) * speed * delta;
+			cy -= Math.sin(ry) * speed * delta;
+		}
+		if (keyboard.has(68)) {
+			cz -= Math.cos(rx + Math.PI / 2) * speed * delta;
+			cx += Math.sin(rx + Math.PI / 2) * speed * delta;
+		}
+		if (keyboard.has(65)) {
+			cz -= Math.cos(rx - Math.PI / 2) * speed * delta;
+			cx += Math.sin(rx - Math.PI / 2) * speed * delta;
+		}
+		if (keyboard.has(39)) rx += rotSpeed * delta;
+		if (keyboard.has(37)) rx -= rotSpeed * delta;
+		if (keyboard.has(38)) ry = Math.min(ry + rotSpeed * delta, Math.PI * 0.49);
+		if (keyboard.has(40)) ry = Math.max(ry - rotSpeed * delta, -Math.PI * 0.49);
+
+		// Set the camera to look at a point
+		const camera = lookAt(
+			cx, cy, cz,
+			cx + Math.sin(rx) * Math.cos(ry), cy + Math.sin(ry), cz - Math.cos(rx) * Math.cos(ry),
+			0, 1, 0,
+		);
+
+		// Draw the 3D stuff
+		structure.draw(rot, camera, perspectiveMat);
+
+		// Draw a 2D picture of the 3D scene and apply some post-processing effect by using a shader
+		fullscreen.draw();
+
+		window.requestAnimationFrame(draw);
+	}
+
+	// Detect keyboard events on the canvas
+	const cnvs = $("#glCanvas");
+	cnvs.keydown(function(e){
+		const code = e.keyCode === 0 ? e.which : e.keyCode;
+		keyboard.add(code);
+		console.log(keyboard);
+		e.preventDefault();
+	});
+	cnvs.keyup(function(e){
+		const code = e.keyCode === 0 ? e.which : e.keyCode;
+		keyboard.delete(code);
+		console.log(keyboard);
+		e.preventDefault();
+	});
+
+	// Start the drawing "loop"
+	draw();
+
+	// Check periodically if the canvas is focused
+	function checkFocus() {
+		if (cnvs.is(":focus")) $("#canvasFocus").text("Use WSAD and arrow keys to move around");
+		else $("#canvasFocus").text("Click the graphics below to enable interactivity");
+		setTimeout(checkFocus, 100);
+	}
+
+	checkFocus();
+});
+</script>
+
+</head>
+<body>
+
+<h1 id="canvasFocus"></h1>
+
+<div id="canvasDiv">
+	<canvas id="glCanvas" tabindex="1"></canvas>
+</div>
+
+</body>
+</html>
